@@ -1,0 +1,145 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: 'AWS::Serverless-2016-10-31'
+Description: Notification of purchase information with EventBridge.
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  BucketName:
+    Description: S3 Bucket name
+    Type: String
+    Default: eventbridge-item-store  
+  Region:
+    Description: Region
+    Type: String
+    Default: ap-southeast-2
+  SenderEmail:
+    Description: Email Address of the sender
+    Type: String
+    Default: verifiedEmail
+
+Resources:
+
+  PurchaseInputRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal: 
+            Service: lambda.amazonaws.com
+          Action: 'sts:AssumeRole'
+      Path: /
+      ManagedPolicyArns:
+      - "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+      Policies:
+      - PolicyName: S3Policy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - 's3:PutObject'
+            Resource: !Sub "arn:aws:s3:::${BucketName}/*"
+
+  
+  PurchaseProcessRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal: 
+            Service: lambda.amazonaws.com
+          Action: 'sts:AssumeRole'
+      Path: /
+      ManagedPolicyArns:
+      - "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+      Policies:
+      - PolicyName: SESPolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - "ses:SendEmail"
+            Resource: "*"
+      - PolicyName: ReadPurchasePolicy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - "s3:GetObject"
+            Resource: !Sub "arn:aws:s3:::${BucketName}/*"
+
+  api:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: api
+      TracingEnabled: true
+      OpenApiVersion: 3.0.2
+
+  PurchaseDataInput:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: Function that takes in the customer info and writes into S3 bucket.
+      Handler: purchase_input.handler
+      Runtime: nodejs12.x
+      Role: !GetAtt PurchaseInputRole.Arn
+      CodeUri: .
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - AWSLambdaReadOnlyAccess
+      Events:
+        Input:
+          Type: Api
+          Properties:
+            RestApiId: !Ref api
+            Path: /purchase
+            Method: POST 
+
+      Environment:
+        Variables:
+          BucketName:
+            Ref: BucketName
+
+  PurchaseDataProcess:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Function that is called by EventBridge.
+      Handler: purchase_process.handler
+      Runtime: nodejs12.x
+      Role: !GetAtt PurchaseProcessRole.Arn
+      Code: .
+      Timeout: 10
+      Environment:
+        Variables:
+          SenderEmail: !Ref SenderEmail
+
+  Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BucketName
+
+  TransactionEventBridge:
+    Type: AWS::Events::Rule
+    Properties:
+      EventPattern:
+        source:
+        - aws.s3
+        detail-type:
+        - AWS API Call via CloudTrail
+        detail:
+          eventSource:
+          - s3.amazonaws.com
+          eventName:
+          - PutObject
+          requestParameters:
+            bucketName:
+            - eventbridge-item-store
+      Targets:
+        - 
+          Id: EventBridgePurchaseProcessTarget
+          Arn: !GetAtt PurchaseDataProcess.Arn
+

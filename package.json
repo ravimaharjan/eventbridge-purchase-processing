@@ -1,0 +1,10 @@
+{
+  "name": "eventbridge-purchase-processing",
+  "version": "1.0.0",
+  "description": "Demo Purchase processing using EventBridge",
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "aws-sdk": "^2.696.0"
+  }
+}

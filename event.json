@@ -1,0 +1,11 @@
+{
+    "purchaseInfo": {
+        "Name": "EventBridge",
+        "Email": "VerifiedEmail",
+        "Address": "NewZealand",
+        "Mobile": "11223344",
+        "Item": "bottle",
+        "quantity": 20,
+        "rate": 100
+    }
+}
